@@ -1,112 +1,79 @@
-from flask import Flask, jsonify, render_template_string
-import torch
-import torch.nn as nn
-import numpy as np
+import torch # type: ignore
+import torch.nn as nn # type: ignore
+import numpy as np # type: ignore
 from dataclasses import dataclass
-from typing import Dict, Tuple
+from typing import Dict
 from datetime import datetime
+import time
+import streamlit as st  # type: ignore # Add streamlit import
 
 def main():
-    config = CalibratedConfig()
-    evaluator = CalibratedEvaluator(config)
-    metrics = evaluator.measure_age()
-    evaluator.print_results(metrics)
+    # Page config
+    st.set_page_config(
+        page_title="Universal Clock",
+        page_icon="⏰",
+        layout="centered"
+    )
 
-# Flask application setup
-app = Flask(__name__)
-
-# Initialize model globally
-config = CalibratedConfig()
-model = CalibratedTimeModel(config)
-try:
-    model.load_state_dict(torch.load('UniversalClock.pth'))
-    model.eval()
-except FileNotFoundError:
-    print("Warning: Model weights file 'UniversalClock.pth' not found. Using default initialization.")
-
-# HTML template for the clock display
-HTML_TEMPLATE = '''
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Universal Clock</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
+    # Custom CSS
+    st.markdown("""
+        <style>
+        .stApp {
             background-color: #1a1a1a;
             color: #ffffff;
         }
         .clock-container {
-            text-align: center;
-            padding: 2em;
             background-color: #2a2a2a;
+            padding: 2rem;
             border-radius: 10px;
             box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            text-align: center;
+            margin: 2rem 0;
         }
         .time {
-            font-size: 3em;
-            margin: 0.5em 0;
+            font-size: 3rem;
+            margin: 1rem 0;
         }
         .model-time {
-            font-size: 2em;
+            font-size: 2rem;
             color: #4CAF50;
-            margin: 0.5em 0;
+            margin: 1rem 0;
         }
-        .refresh {
-            color: #888;
-            font-size: 0.8em;
-        }
-    </style>
-    <script>
-        function updateClock() {
-            fetch('/predict')
-                .then(response => response.json())
-                .then(data => {
-                    document.getElementById('model-time').textContent = 
-                        Math.floor(data.age_seconds).toLocaleString() + ' seconds';
-                });
-            
-            const now = new Date();
-            document.getElementById('actual-time').textContent = 
-                now.toLocaleTimeString();
-            
-            setTimeout(updateClock, 1000);
-        }
-    </script>
-</head>
-<body onload="updateClock()">
-    <div class="clock-container">
-        <h2>Universal Clock</h2>
-        <div class="time">
-            Current Time: <span id="actual-time"></span>
-        </div>
-        <div class="model-time">
-            Model Prediction: <span id="model-time"></span>
-        </div>
-        <p class="refresh">Updates automatically every second</p>
-    </div>
-</body>
-</html>
-'''
+        </style>
+    """, unsafe_allow_html=True)
 
-@app.route('/')
-def home():
-    return render_template_string(HTML_TEMPLATE)
+    # Initialize model
+    config = CalibratedConfig() # type: ignore
+    model = CalibratedTimeModel(config) # type: ignore
+    try:
+        model.load_state_dict(torch.load('UniversalClock.pth'))
+        model.eval()
+    except FileNotFoundError:
+        st.warning("Warning: Model weights file 'UniversalClock.pth' not found. Using default initialization.")
 
-@app.route('/predict', methods=['GET'])
-def predict():
-    with torch.no_grad():
-        prediction, metrics = model()
-    
-    return jsonify({
-        'age_seconds': prediction.item(),
-        'metrics': metrics
-    })
+    # Create placeholder for clock display
+    clock_container = st.empty()
+
+    while True:
+        with torch.no_grad():
+            prediction, metrics = model()
+
+        current_time = datetime.now().strftime("%H:%M:%S")
+        
+        # Update clock display
+        clock_container.markdown(f"""
+            <div class="clock-container">
+                <h2>Universal Clock</h2>
+                <div class="time">
+                    Current Time: {current_time}
+                </div>
+                <div class="model-time">
+                    Model Prediction: {int(prediction.item()):,} seconds
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        time.sleep(1)
 
 if __name__ == '__main__':
-    app.run(debug=True) 
+    main() 
